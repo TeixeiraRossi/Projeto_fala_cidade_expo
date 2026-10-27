@@ -1,8 +1,8 @@
-import { useAuth } from "@/hooks/use-auth";
-import { cores } from "@/styles/index";
+import { useAuth, useSair } from "@/hooks/use-auth";
+import { cores } from "@/styles";
 import { Image } from 'expo-image';
 import { Link } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 
@@ -11,13 +11,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function Perfil() {
 
   const { user, isLogin: estaLogado } = useAuth();
+  // Desloga, limpa o histórico de navegação e vai para o index.
+  const handleSair = useSair();
 
-  const perfil = user;
+  const perfil = user ? user : 'sem informação disponivel';
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.status}>
-        {estaLogado && perfil ? (
+        {estaLogado ? (
           <>
             <Text style={[styles.statusTexto, { color: cores.verde }]}>
               Você está logado
@@ -27,7 +29,7 @@ export default function Perfil() {
             
             <Image
               style={styles.image}
-              source={{ uri: perfil.photoURL ?? undefined }}
+              source={{ uri: perfil.photoURL }}
              // placeholder={{ blurhash }}
               contentFit="cover"
               transition={1000}
@@ -39,6 +41,14 @@ export default function Perfil() {
                 <Text style={styles.link}>Perfil do usuário</Text>
               </Pressable>
             </Link>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.botaoSair}
+              onPress={handleSair}
+            >
+              <Text style={styles.textoBotaoSair}>Sair</Text>
+            </TouchableOpacity>
           </>
         ) : (
           <Text style={[styles.statusTexto, { color: cores.alerta }]}>
@@ -78,6 +88,20 @@ const styles = StyleSheet.create({
     color: cores.preto,
     fontSize: 18,
     fontWeight: "600",
+  },
+  botaoSair: {
+    borderWidth: 2,
+    borderColor: cores.verde,
+    width: 150,
+    padding: 16,
+    alignItems: "center",
+    borderRadius: 15,
+    marginTop: 24,
+  },
+  textoBotaoSair: {
+    color: cores.verde,
+    fontSize: 18,
+    fontWeight: "800",
   },
   image: {
    // flex: 1,

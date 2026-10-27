@@ -12,12 +12,12 @@ export default function Notificacoes() {
 
   const { user, isLogin: estaLogado } = useAuth();
 
-  const perfil = user;
+  const perfil = user ? user : 'sem informação disponivel';
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.status}>
-        {estaLogado && perfil ? (
+        {estaLogado ? (
           <>
             <Text style={[styles.statusTexto, { color: cores.verde }]}>
               Você está logado
@@ -27,7 +27,7 @@ export default function Notificacoes() {
             
             <Image
               style={styles.image}
-              source={{ uri: perfil.photoURL ?? undefined }}
+              source={{ uri: perfil.photoURL }}
              // placeholder={{ blurhash }}
               contentFit="cover"
               transition={1000}

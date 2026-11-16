@@ -26,10 +26,10 @@ export default function RootLayout() {
               name="esqueci-senha"
               options={{ title: "Recuperar senha" }}
             />
-            {/* Só a seta de voltar: o título "Novo reporte" fica no corpo da tela */}
+            {/* A tela de novo reporte já possui cabeçalho próprio. */}
             <Stack.Screen
               name="novo-reporte"
-              options={{ title: "", headerBackTitle: "", headerShadowVisible: false }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="verificar-email"

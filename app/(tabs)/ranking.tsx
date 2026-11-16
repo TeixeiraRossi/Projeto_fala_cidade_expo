@@ -12,7 +12,7 @@ export default function Ranking() {
 
   const { user, isLogin: estaLogado } = useAuth();
 
-  const perfil = user ? user : 'sem informação disponivel';
+  const perfil = user;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -22,12 +22,12 @@ export default function Ranking() {
             <Text style={[styles.statusTexto, { color: cores.verde }]}>
               Você está logado
             </Text>
-            <Text style={styles.titulo}>User: {perfil.displayName}</Text>
-            <Text style={styles.titulo}>Email: {perfil.email}</Text>
+            <Text style={styles.titulo}>User: {perfil?.displayName}</Text>
+            <Text style={styles.titulo}>Email: {perfil?.email}</Text>
             
             <Image
               style={styles.image}
-              source={{ uri: perfil.photoURL }}
+              source={{ uri: perfil?.photoURL ?? undefined }}
              // placeholder={{ blurhash }}
               contentFit="cover"
               transition={1000}

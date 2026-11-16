@@ -1,6 +1,5 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import "react-native-reanimated";
-
 import { AuthProvider } from "@/context/auth-context";
 import { CidadeProvider } from "@/context/cidade-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";

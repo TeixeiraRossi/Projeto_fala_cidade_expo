@@ -1,15 +1,18 @@
 import { MapaView } from "@/components/mapa-view";
 import { TIPOS } from "@/constants/tipos";
+import { useAuth } from "@/hooks/use-auth";
 import { useCidade } from "@/hooks/use-cidade";
+import { criarReporte } from "@/service/reportes";
 import { cores } from "@/styles";
 import { TipoOcorrencia } from "@/types/ocorrencia";
 import { Feather } from "@react-native-vector-icons/feather";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { Dispatch, SetStateAction, useEffect, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -161,19 +164,28 @@ function ListaFotos({
 
 export default function NovoReporte() {
   const router = useRouter();
+  const { user } = useAuth();
   const { coordenadas } = useCidade();
 
+  const [titulo, setTitulo] = useState("");
   const [tipo, setTipo] = useState<TipoOcorrencia>("buraco");
   const [fotos, setFotos] = useState<string[]>([]);
   const [fotosReferencia, setFotosReferencia] = useState<string[]>([]);
-  const [endereco, setEndereco] = useState("Buscando endereço...");
+  const [endereco, setEndereco] = useState<string | null>(null);
+  const [enderecoTexto, setEnderecoTexto] = useState("Buscando endereço...");
   const [severidade, setSeveridade] = useState<Severidade>("moderado");
   const [descricao, setDescricao] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const envioEmAndamento = useRef(false);
 
   // Converte as coordenadas do usuário em "Rua, número — Bairro".
   useEffect(() => {
-    if (!coordenadas) return;
+    setEndereco(null);
+    if (!coordenadas) {
+      setEnderecoTexto("Localização indisponível");
+      return;
+    }
+    setEnderecoTexto("Buscando endereço...");
     let ativo = true;
     Location.reverseGeocodeAsync(coordenadas)
       .then(([lugar]) => {
@@ -181,9 +193,10 @@ export default function NovoReporte() {
         const rua = [lugar?.street, lugar?.streetNumber].filter(Boolean).join(", ");
         const bairro = lugar?.district ?? lugar?.subregion;
         const texto = [rua, bairro].filter(Boolean).join(" — ");
-        setEndereco(texto || "Endereço não encontrado");
+        setEndereco(texto || null);
+        setEnderecoTexto(texto || "Endereço não encontrado");
       })
-      .catch(() => ativo && setEndereco("Endereço não encontrado"));
+      .catch(() => { if (ativo) setEnderecoTexto("Endereço não encontrado"); });
     return () => {
       ativo = false;
     };
@@ -203,22 +216,39 @@ export default function NovoReporte() {
   }
 
   async function enviar() {
-    if (fotos.length === 0) {
-      Alert.alert("Foto obrigatória", "Adicione a foto do problema para continuar.");
+    if (envioEmAndamento.current) return;
+    if (!titulo.trim()) {
+      Alert.alert("Título obrigatório", "Diga onde está o problema.");
+      return;
+    }
+    if (!user) {
+      Alert.alert("Login necessário", "Entre com a sua conta para reportar.");
+      return;
+    }
+    if (!coordenadas) {
+      Alert.alert("Localização indisponível", "Ative a localização do aparelho.");
       return;
     }
     if (tipo === "outro" && !descricao.trim()) {
       Alert.alert("Descrição obrigatória", "Descreva o problema que você encontrou.");
       return;
     }
+    envioEmAndamento.current = true;
     setEnviando(true);
-    // TODO: enviar para a API quando ela existir (tipo, fotos, fotosReferencia,
-    // coordenadas, endereco, severidade, descricao).
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    setEnviando(false);
-    Alert.alert("Reporte enviado", "Obrigado por ajudar sua cidade!", [
-      { text: "OK", onPress: () => router.back() },
-    ]);
+    try {
+      // O UID associa o documento ao usuário autenticado; as regras também verificam isso.
+      await criarReporte({ idNotificante: user.uid, titulo, descricao, tipo, severidade,
+        endereco, latitude: coordenadas.latitude, longitude: coordenadas.longitude });
+      Alert.alert("Reporte enviado", "Os dados foram salvos. As fotos ainda não são enviadas.", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    } catch (erro) {
+      console.warn("Falha ao gravar o reporte", erro);
+      Alert.alert("Não foi possível enviar", "Confira sua conexão e tente novamente.");
+    } finally {
+      envioEmAndamento.current = false;
+      setEnviando(false);
+    }
   }
 
   return (
@@ -244,6 +274,10 @@ export default function NovoReporte() {
           keyboardShouldPersistTaps="handled"
         >
           <Etapas />
+
+          <Text style={styles.rotulo}>Título *</Text>
+          <TextInput style={styles.descricao} value={titulo} onChangeText={setTitulo}
+            placeholder="Ex.: Buraco na Rua das Palmeiras" placeholderTextColor={cores.cinzaEscuro} />
 
           <Text style={styles.rotulo}>1. Tipo de ocorrência *</Text>
           <View style={styles.chips}>
@@ -281,8 +315,9 @@ export default function NovoReporte() {
           />
 
           <Text style={styles.rotulo}>
-            3. Fotos do problema * ({fotos.length}/{MAX_FOTOS})
+            3. Fotos do problema (opcional) ({fotos.length}/{MAX_FOTOS})
           </Text>
+          <Text style={styles.fotoTexto}>As fotos ficam apenas nesta tela e ainda não são salvas com o reporte.</Text>
           <ListaFotos
             uris={fotos}
             max={MAX_FOTOS}
@@ -318,7 +353,7 @@ export default function NovoReporte() {
           <View style={styles.endereco}>
             <Feather name="map-pin" size={18} color={cores.cinzaEscuro} />
             <Text style={styles.enderecoTexto} numberOfLines={1}>
-              {endereco}
+              {enderecoTexto}
             </Text>
           </View>
 
@@ -348,6 +383,7 @@ export default function NovoReporte() {
               (pressed || enviando) && { backgroundColor: cores.verdeEscuro },
             ]}
           >
+            {enviando && <ActivityIndicator color={cores.branco} />}
             <Text style={styles.botaoTexto}>
               {enviando ? "Enviando..." : "Enviar reporte"}
             </Text>

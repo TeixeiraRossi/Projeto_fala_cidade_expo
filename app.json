@@ -8,11 +8,11 @@
     "scheme": "fasipe",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.bigstore.falaacidade",
+      "bundleIdentifier": "com.guilhermerossi.falacidade",
       "supportsTablet": true
     },
     "android": {
-      "package": "com.bigstore.falaacidade",
+      "package": "com.guilhermerossi.falacidade",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

@@ -2,17 +2,19 @@ import { MapaView } from "@/components/mapa-view";
 import { TIPOS } from "@/constants/tipos";
 import { useAuth } from "@/hooks/use-auth";
 import { useCidade } from "@/hooks/use-cidade";
-import { enviarReporte, ResultadoDoReporte } from "@/services/reportes";
+import { enviarReporte, reenviarFotos, ResultadoDoReporte } from "@/services/reportes";
 import { cores } from "@/styles";
 import { Severidade, TipoOcorrencia } from "@/types/ocorrencia";
 import { comprimirFoto } from "@/utils/imagem";
+import { buscarCodigoIbge } from "@/utils/municipios";
 import { Feather } from "@react-native-vector-icons/feather";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { Dispatch, SetStateAction, useEffect, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AlertButton,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -80,6 +82,23 @@ const ENDERECO_NAO_ENCONTRADO = "Endereço não encontrado";
 const MAX_FOTOS = 5;
 const MAX_FOTOS_REFERENCIA = 2;
 
+function avisar(titulo: string, mensagem: string, botoes?: AlertButton[]) {
+  if (Platform.OS !== "web") {
+    Alert.alert(titulo, mensagem, botoes);
+    return;
+  }
+  const texto = `${titulo}\n\n${mensagem}`;
+  const cancelar = botoes?.find((botao) => botao.style === "cancel");
+  const confirmar = botoes?.find((botao) => botao.style !== "cancel");
+  if (cancelar && confirmar) {
+    if (window.confirm(texto)) confirmar.onPress?.();
+    else cancelar.onPress?.();
+  } else {
+    window.alert(texto);
+    confirmar?.onPress?.();
+  }
+}
+
 /**
  * Lista de fotos: miniaturas (com botão de remover) e, enquanto não chegou
  * no limite, um quadro para tirar mais uma foto.
@@ -103,7 +122,7 @@ function ListaFotos({
   const cheio = uris.length >= max;
 
   function confirmarRemocao(indice: number) {
-    Alert.alert("Excluir foto", "Deseja excluir esta foto?", [
+    avisar("Excluir foto", "Deseja excluir esta foto?", [
       { text: "Cancelar", style: "cancel" },
       { text: "Excluir", style: "destructive", onPress: () => onRemover(indice) },
     ]);
@@ -165,13 +184,16 @@ function ListaFotos({
 
 /** Texto do aviso exibido depois que o reporte foi gravado. */
 function montarMensagemDeSucesso(resultado: ResultadoDoReporte): string {
-  const agradecimento = "Obrigado por ajudar sua cidade!";
+  const agradecimento = `Reporte registrado. Protocolo: ${resultado.idOcorrencia}.`;
 
   if (!resultado.armazenamentoAtivo) {
-    return `${agradecimento}\n\nAs fotos ainda não foram enviadas porque o armazenamento não está configurado.`;
+    return `${agradecimento}\n\nAs fotos não foram enviadas porque o armazenamento não está configurado. Não envie o reporte novamente.`;
+  }
+  if (resultado.falhaAoAnexarFotos) {
+    return `${agradecimento}\n\nNão foi possível vincular as fotos ao reporte. Guarde o protocolo e não envie o reporte novamente.`;
   }
   if (resultado.quantidadeDeFotosComFalha > 0) {
-    return `${agradecimento}\n\n${resultado.quantidadeDeFotosComFalha} foto(s) não puderam ser enviadas.`;
+    return `${agradecimento}\n\n${resultado.quantidadeDeFotosComFalha} foto(s) não puderam ser enviadas. Não envie o reporte novamente.`;
   }
   return agradecimento;
 }
@@ -194,15 +216,22 @@ export default function NovoReporte() {
   const [tipo, setTipo] = useState<TipoOcorrencia>("buraco");
   const [fotosDoProblema, setFotosDoProblema] = useState<string[]>([]);
   const [fotosDeReferencia, setFotosDeReferencia] = useState<string[]>([]);
-  const [endereco, setEndereco] = useState(ENDERECO_BUSCANDO);
+  const [endereco, setEndereco] = useState(
+    Platform.OS === "web" ? ENDERECO_NAO_ENCONTRADO : ENDERECO_BUSCANDO
+  );
   const [severidade, setSeveridade] = useState<Severidade>("moderado");
+  const [titulo, setTitulo] = useState("");
+  const [cidadeManual, setCidadeManual] = useState("");
+  const [ufManual, setUfManual] = useState("");
   const [descricao, setDescricao] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [processandoFoto, setProcessandoFoto] = useState(false);
+  const [resultadoPendente, setResultadoPendente] = useState<ResultadoDoReporte | null>(null);
+  const envioEmAndamento = useRef(false);
 
   // Converte as coordenadas do usuário em "Rua, número — Bairro".
   useEffect(() => {
-    if (!coordenadas) return;
+    if (!coordenadas || Platform.OS === "web") return;
     let ativo = true;
     Location.reverseGeocodeAsync(coordenadas)
       .then(([lugar]) => {
@@ -220,12 +249,17 @@ export default function NovoReporte() {
 
   async function tirarFoto(definir: Dispatch<SetStateAction<string[]>>) {
     if (processandoFoto) return;
-    const { granted } = await ImagePicker.requestCameraPermissionsAsync();
-    if (!granted) {
-      Alert.alert("Permissão negada", "Libere o acesso à câmera nas configurações.");
-      return;
+    let resultado: ImagePicker.ImagePickerResult;
+    if (Platform.OS === "web") {
+      resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
+    } else {
+      const { granted } = await ImagePicker.requestCameraPermissionsAsync();
+      if (!granted) {
+        avisar("Permissão negada", "Libere o acesso à câmera nas configurações.");
+        return;
+      }
+      resultado = await ImagePicker.launchCameraAsync({ quality: 0.7 });
     }
-    const resultado = await ImagePicker.launchCameraAsync({ quality: 0.7 });
     if (resultado.canceled) return;
 
     // Cada câmera gera uma foto de tamanho diferente. Aqui ela é reduzida para
@@ -236,35 +270,47 @@ export default function NovoReporte() {
       definir((atuais) => [...atuais, foto.uri]);
     } catch (erro) {
       console.warn("Falha ao comprimir a foto", erro);
-      Alert.alert("Não foi possível usar a foto", "Tente tirar a foto novamente.");
+      avisar("Não foi possível usar a foto", "Tente tirar a foto novamente.");
     } finally {
       setProcessandoFoto(false);
     }
   }
 
   async function enviar() {
+    if (envioEmAndamento.current) return;
     // 1. Confere se o formulário e o usuário estão prontos para o envio.
+    if (!titulo.trim()) {
+      avisar("Título obrigatório", "Informe um título para o problema.");
+      return;
+    }
     if (fotosDoProblema.length === 0) {
-      Alert.alert("Foto obrigatória", "Adicione a foto do problema para continuar.");
+      avisar("Foto obrigatória", "Adicione a foto do problema para continuar.");
       return;
     }
     if (tipo === "outro" && !descricao.trim()) {
-      Alert.alert("Descrição obrigatória", "Descreva o problema que você encontrou.");
+      avisar("Descrição obrigatória", "Descreva o problema que você encontrou.");
       return;
     }
     if (!usuarioLogado) {
-      Alert.alert("Login necessário", "Entre com a sua conta para reportar um problema.");
+      avisar("Login necessário", "Entre com a sua conta para reportar um problema.");
       return;
     }
     if (!coordenadas) {
-      Alert.alert(
+      avisar(
         "Localização indisponível",
         "Ative a localização para registrar onde está o problema."
       );
       return;
     }
-    if (!codigoIbge) {
-      Alert.alert(
+    const codigoDaCidade = codigoIbge ?? (Platform.OS === "web"
+      ? buscarCodigoIbge([cidadeManual.trim()], ufManual.trim().toUpperCase())
+      : null);
+    if (!codigoDaCidade) {
+      if (Platform.OS === "web") {
+        avisar("Cidade não identificada", "Informe uma cidade e uma UF válidas para continuar.");
+        return;
+      }
+      avisar(
         "Cidade não identificada",
         "Não conseguimos identificar sua cidade. Confira se a localização está ativa e tente novamente.",
         [
@@ -276,6 +322,7 @@ export default function NovoReporte() {
     }
 
     // 2. Grava o reporte no Firebase.
+    envioEmAndamento.current = true;
     setEnviando(true);
     try {
       // O endereço só é gravado se foi realmente encontrado (e não o texto de aviso).
@@ -285,24 +332,88 @@ export default function NovoReporte() {
       const resultado = await enviarReporte({
         usuarioLogado,
         tipo,
+        titulo,
         descricao,
         severidade,
         coordenadas,
         endereco: enderecoFoiEncontrado ? endereco : null,
-        codigoIbge,
+        codigoIbge: codigoDaCidade,
         fotosDoProblema,
         fotosDeReferencia,
       });
 
-      Alert.alert("Reporte enviado", montarMensagemDeSucesso(resultado), [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      if (resultado.pendencia) {
+        setResultadoPendente(resultado);
+      } else {
+        avisar("Reporte enviado", montarMensagemDeSucesso(resultado), [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      }
     } catch (erro) {
       console.error("Falha ao gravar o reporte", erro);
-      Alert.alert("Não foi possível enviar", montarMensagemDeErro(erro));
+      avisar("Não foi possível enviar", montarMensagemDeErro(erro));
     } finally {
+      envioEmAndamento.current = false;
       setEnviando(false);
     }
+  }
+
+  async function tentarFotosNovamente() {
+    if (!resultadoPendente?.pendencia || envioEmAndamento.current) return;
+    if (!usuarioLogado || usuarioLogado.uid !== resultadoPendente.pendencia.usuarioLogado.uid) {
+      avisar("Login necessário", "Entre novamente com a mesma conta para enviar as fotos.");
+      return;
+    }
+    envioEmAndamento.current = true;
+    setEnviando(true);
+    try {
+      const resultado = await reenviarFotos({ ...resultadoPendente.pendencia, usuarioLogado });
+      if (resultado.pendencia) {
+        setResultadoPendente(resultado);
+      } else {
+        setResultadoPendente(null);
+        avisar("Reporte enviado", montarMensagemDeSucesso(resultado), [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      }
+    } catch (erro) {
+      console.error("Falha ao retomar envio de fotos", erro);
+      avisar("Não foi possível enviar as fotos", "Confira a conexão e tente novamente nesta tela.");
+    } finally {
+      envioEmAndamento.current = false;
+      setEnviando(false);
+    }
+  }
+
+  if (resultadoPendente) {
+    return (
+      <SafeAreaView style={estilos.container} edges={["top", "bottom"]}>
+        <ScrollView contentContainerStyle={estilos.conteudo}>
+          <Text style={estilos.titulo}>Reporte registrado</Text>
+          <Text>Protocolo: {resultadoPendente.idOcorrencia}</Text>
+          <Text>
+            {resultadoPendente.armazenamentoAtivo
+              ? "As fotos ainda não foram vinculadas ao reporte. Você pode tentar novamente nesta tela."
+              : "O armazenamento de fotos não está configurado. As fotos não foram enviadas."}
+          </Text>
+          <Text>Guarde o protocolo. Ao sair desta tela, não será possível retomar este envio.</Text>
+          {resultadoPendente.armazenamentoAtivo && (
+            <Pressable style={estilos.botao} onPress={tentarFotosNovamente} disabled={enviando}>
+              <Text style={estilos.botaoTexto}>{enviando ? "Enviando fotos..." : "Tentar fotos novamente"}</Text>
+            </Pressable>
+          )}
+          <Pressable
+            disabled={enviando}
+            onPress={() => avisar("Sair sem as fotos?", "O reporte já foi registrado. As fotos pendentes não poderão ser retomadas depois de sair.", [
+              { text: "Continuar aqui", style: "cancel" },
+              { text: "Sair", onPress: () => router.back() },
+            ])}
+          >
+            <Text style={estilos.rotulo}>Sair</Text>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -347,13 +458,25 @@ export default function NovoReporte() {
             })}
           </View>
 
+          <Text style={estilos.rotulo}>2. Título *</Text>
+          <TextInput
+            style={estilos.campoTitulo}
+            value={titulo}
+            onChangeText={setTitulo}
+            placeholder="Ex.: Buraco na Rua das Palmeiras"
+            placeholderTextColor={cores.cinzaEscuro}
+            maxLength={150}
+            accessibilityLabel="Título do reporte, obrigatório"
+          />
+
           <Text style={estilos.rotulo}>
-            {tipo === "outro" ? "2. Descrição *" : "2. Descrição (opcional)"}
+            {tipo === "outro" ? "3. Descrição *" : "3. Descrição (opcional)"}
           </Text>
           <TextInput
             style={estilos.descricao}
             value={descricao}
             onChangeText={setDescricao}
+            maxLength={1000}
             placeholder={
               tipo === "outro"
                 ? "Descreva o problema..."
@@ -365,7 +488,7 @@ export default function NovoReporte() {
           />
 
           <Text style={estilos.rotulo}>
-            3. Fotos do problema * ({fotosDoProblema.length}/{MAX_FOTOS})
+            4. Fotos do problema * ({fotosDoProblema.length}/{MAX_FOTOS})
           </Text>
           <ListaFotos
             uris={fotosDoProblema}
@@ -376,7 +499,7 @@ export default function NovoReporte() {
           />
 
           <Text style={estilos.rotulo}>
-            4. Fotos de referência (opcional) ({fotosDeReferencia.length}/
+            5. Fotos de referência (opcional) ({fotosDeReferencia.length}/
             {MAX_FOTOS_REFERENCIA})
           </Text>
           <ListaFotos
@@ -390,7 +513,7 @@ export default function NovoReporte() {
             }
           />
 
-          <Text style={estilos.rotulo}>5. Localização</Text>
+          <Text style={estilos.rotulo}>6. Localização</Text>
           <View style={estilos.mapa}>
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
               <MapaView coordenadas={coordenadas} style={StyleSheet.absoluteFill} />
@@ -405,6 +528,30 @@ export default function NovoReporte() {
               {endereco}
             </Text>
           </View>
+
+          {Platform.OS === "web" && !codigoIbge && (
+            <>
+              <Text style={estilos.rotulo}>Cidade e UF *</Text>
+              <TextInput
+                style={estilos.campoTitulo}
+                value={cidadeManual}
+                onChangeText={setCidadeManual}
+                placeholder="Nome da cidade"
+                placeholderTextColor={cores.cinzaEscuro}
+                accessibilityLabel="Cidade"
+              />
+              <TextInput
+                style={estilos.campoTitulo}
+                value={ufManual}
+                onChangeText={setUfManual}
+                placeholder="UF, por exemplo MT"
+                placeholderTextColor={cores.cinzaEscuro}
+                autoCapitalize="characters"
+                maxLength={2}
+                accessibilityLabel="UF"
+              />
+            </>
+          )}
 
           <Text style={estilos.rotulo}>Severidade</Text>
           <View style={estilos.chips}>
@@ -553,6 +700,15 @@ const estilos = StyleSheet.create({
   chipTexto: { fontSize: 12, fontWeight: "600", color: cores.cinzaEscuro },
   chipTextoAtivo: { color: cores.verde },
 
+  campoTitulo: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDA,
+    backgroundColor: cores.branco,
+    fontSize: 14,
+    color: cores.preto,
+  },
   descricao: {
     minHeight: 72,
     padding: 14,

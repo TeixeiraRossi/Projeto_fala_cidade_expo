@@ -8,6 +8,7 @@ import { User } from "firebase/auth";
 import {
   addDoc,
   collection,
+  doc,
   DocumentReference,
   GeoPoint,
   serverTimestamp,
@@ -23,6 +24,7 @@ import {
 export type DadosDoReporte = {
   usuarioLogado: User;
   tipo: TipoOcorrencia;
+  titulo: string;
   descricao: string;
   severidade: Severidade;
   coordenadas: Coordenadas;
@@ -37,11 +39,16 @@ export type ResultadoDoReporte = {
   armazenamentoAtivo: boolean; // false = bucket não configurado, fotos não enviadas
   quantidadeDeFotosEnviadas: number;
   quantidadeDeFotosComFalha: number;
+  falhaAoAnexarFotos: boolean;
+  pendencia?: EnvioDeFotosPendente;
 };
 
-type FotosEnviadas = {
-  fotosGravadas: FotoGravada[];
-  quantidadeDeFalhas: number;
+type FotoPendente = { uri: string; gravada: FotoGravada | null };
+export type EnvioDeFotosPendente = {
+  idOcorrencia: string;
+  usuarioLogado: User;
+  problema: FotoPendente[];
+  referencia: FotoPendente[];
 };
 
 /** Passo 1: cria o documento da ocorrência, com as listas de fotos ainda vazias. */
@@ -53,12 +60,16 @@ async function criarOcorrencia(dados: DadosDoReporte): Promise<DocumentReference
     idCidade: dados.codigoIbge,
     idDepartamento: null,
     tipo: dados.tipo,
+    titulo: dados.titulo.trim(),
     localizacao: new GeoPoint(latitude, longitude),
+    latitude,
+    longitude,
     geohash: gerarGeohash(latitude, longitude),
     endereco: dados.endereco,
     descricao: dados.descricao.trim() || null,
     severidade: dados.severidade,
     situacao: "aberta",
+    status: "aberto",
     fotos: { problema: [], referencia: [], resolvida: [] },
     quantidadeApoios: 0,
     criadoEm: serverTimestamp(),
@@ -78,26 +89,29 @@ async function criarOcorrencia(dados: DadosDoReporte): Promise<DocumentReference
 async function enviarGrupoDeFotos(
   nomeDoBucketAtivo: string,
   usuarioLogado: User,
-  urisDasFotos: string[],
+  fotos: FotoPendente[],
   pasta: string
-): Promise<FotosEnviadas> {
-  const fotosGravadas: FotoGravada[] = [];
-  let quantidadeDeFalhas = 0;
-
-  for (let posicao = 0; posicao < urisDasFotos.length; posicao++) {
+): Promise<FotoPendente[]> {
+  const resultado: FotoPendente[] = [];
+  for (let posicao = 0; posicao < fotos.length; posicao++) {
+    const fotoPendente = fotos[posicao];
+    if (fotoPendente.gravada) {
+      resultado.push(fotoPendente);
+      continue;
+    }
     const numeroDaFoto = posicao + 1; // os arquivos são numerados a partir de 1
     const caminho = `${pasta}/${numeroDaFoto}.jpg`;
 
     try {
-      const foto = await enviarFoto(nomeDoBucketAtivo, usuarioLogado, urisDasFotos[posicao], caminho);
-      fotosGravadas.push(foto);
+      const foto = await enviarFoto(nomeDoBucketAtivo, usuarioLogado, fotoPendente.uri, caminho);
+      resultado.push({ ...fotoPendente, gravada: foto });
     } catch (erro) {
-      quantidadeDeFalhas++;
+      resultado.push(fotoPendente);
       console.warn(`Falha ao enviar a foto ${caminho}`, erro);
     }
   }
 
-  return { fotosGravadas, quantidadeDeFalhas };
+  return resultado;
 }
 
 /** Passo 3: anexa ao documento da ocorrência as URLs das fotos que foram enviadas. */
@@ -124,47 +138,70 @@ export async function enviarReporte(dados: DadosDoReporte): Promise<ResultadoDoR
   await garantirCadastroDoNotificante(dados.usuarioLogado);
 
   const ocorrencia = await criarOcorrencia(dados);
+  return reenviarFotos({
+    idOcorrencia: ocorrencia.id,
+    usuarioLogado: dados.usuarioLogado,
+    problema: dados.fotosDoProblema.map((uri) => ({ uri, gravada: null })),
+    referencia: dados.fotosDeReferencia.map((uri) => ({ uri, gravada: null })),
+  });
+}
 
+/** Retoma as fotos do mesmo reporte enquanto a tela estiver aberta. */
+export async function reenviarFotos(pendente: EnvioDeFotosPendente): Promise<ResultadoDoReporte> {
   // Sem bucket configurado: a ocorrência já foi gravada, só não há fotos.
   if (!nomeDoBucket) {
     return {
-      idOcorrencia: ocorrencia.id,
+      idOcorrencia: pendente.idOcorrencia,
       armazenamentoAtivo: false,
       quantidadeDeFotosEnviadas: 0,
       quantidadeDeFotosComFalha: 0,
+      falhaAoAnexarFotos: false,
+      pendencia: pendente,
     };
   }
 
-  const pastaDaOcorrencia = `ocorrencias/${ocorrencia.id}`;
+  const pastaDaOcorrencia = `ocorrencias/${pendente.idOcorrencia}`;
   const fotosDoProblema = await enviarGrupoDeFotos(
     nomeDoBucket,
-    dados.usuarioLogado,
-    dados.fotosDoProblema,
+    pendente.usuarioLogado,
+    pendente.problema,
     `${pastaDaOcorrencia}/problema`
   );
   const fotosDeReferencia = await enviarGrupoDeFotos(
     nomeDoBucket,
-    dados.usuarioLogado,
-    dados.fotosDeReferencia,
+    pendente.usuarioLogado,
+    pendente.referencia,
     `${pastaDaOcorrencia}/referencia`
   );
 
-  const quantidadeDeFotosEnviadas =
-    fotosDoProblema.fotosGravadas.length + fotosDeReferencia.fotosGravadas.length;
+  const fotos = [...fotosDoProblema, ...fotosDeReferencia];
+  const quantidadeDeFotosEnviadas = fotos.filter((foto) => foto.gravada !== null).length;
+  const quantidadeDeFotosComFalha = fotos.length - quantidadeDeFotosEnviadas;
+  const novaPendencia = { ...pendente, problema: fotosDoProblema, referencia: fotosDeReferencia };
 
-  if (quantidadeDeFotosEnviadas > 0) {
-    await anexarFotosNaOcorrencia(
-      ocorrencia,
-      fotosDoProblema.fotosGravadas,
-      fotosDeReferencia.fotosGravadas
-    );
+  let falhaAoAnexarFotos = false;
+  // A regra permite preencher cada lista apenas uma vez. Só anexamos depois
+  // de todas as fotos chegarem ao Storage, para permitir novas tentativas.
+  if (quantidadeDeFotosComFalha === 0 && quantidadeDeFotosEnviadas > 0) {
+    try {
+      await anexarFotosNaOcorrencia(
+        doc(bancoDeDados, "ocorrencias", pendente.idOcorrencia),
+        fotosDoProblema.map((foto) => foto.gravada as FotoGravada),
+        fotosDeReferencia.map((foto) => foto.gravada as FotoGravada)
+      );
+    } catch (erro) {
+      // A ocorrência já existe: informar a falha sem sugerir recriá-la.
+      falhaAoAnexarFotos = true;
+      console.error("Falha ao vincular fotos à ocorrência", pendente.idOcorrencia, erro);
+    }
   }
 
   return {
-    idOcorrencia: ocorrencia.id,
+    idOcorrencia: pendente.idOcorrencia,
     armazenamentoAtivo: true,
     quantidadeDeFotosEnviadas,
-    quantidadeDeFotosComFalha:
-      fotosDoProblema.quantidadeDeFalhas + fotosDeReferencia.quantidadeDeFalhas,
+    falhaAoAnexarFotos,
+    quantidadeDeFotosComFalha,
+    pendencia: quantidadeDeFotosComFalha > 0 || falhaAoAnexarFotos ? novaPendencia : undefined,
   };
 }

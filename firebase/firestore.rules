@@ -54,6 +54,13 @@ service cloud.firestore {
           || (situacaoAntes == 'em_execucao' && situacaoDepois == 'resolvida');
     }
 
+    // Status é a versão resumida exibida no mapa e exigida na atividade.
+    function statusCompativel(situacao, status) {
+      return (situacao in ['aberta', 'reconhecida'] && status == 'aberto')
+          || (situacao == 'em_execucao' && status == 'em_execucao')
+          || (situacao == 'resolvida' && status == 'resolvido');
+    }
+
     // ============ cidades ============
     // O id do documento é o código do município no IBGE (ex.: 5107909).
     match /cidades/{idCidade} {
@@ -113,7 +120,13 @@ service cloud.firestore {
       allow create: if estaLogado()
         && request.resource.data.idNotificante == request.auth.uid
         && request.resource.data.situacao == 'aberta'
+        && request.resource.data.status == 'aberto'
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() <= 150
+        && request.resource.data.titulo.matches('.*\\S.*')
         && request.resource.data.localizacao is latlng
+        && request.resource.data.latitude == request.resource.data.localizacao.latitude()
+        && request.resource.data.longitude == request.resource.data.localizacao.longitude()
         && request.resource.data.tipo in ['buraco', 'calcada', 'iluminacao', 'outro']
         && request.resource.data.severidade in ['leve', 'moderado', 'grave']
         && (request.resource.data.descricao == null
@@ -135,8 +148,9 @@ service cloud.firestore {
         (
           ehPrefeituraDaOcorrencia(resource.data, request.resource.data)
           && transicaoDeSituacaoValida(resource.data.situacao, request.resource.data.situacao)
+          && statusCompativel(request.resource.data.situacao, request.resource.data.status)
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['situacao', 'idDepartamento', 'fotos', 'reconhecidoEm', 'resolvidoEm', 'atualizadoEm'])
+               .hasOnly(['situacao', 'status', 'idDepartamento', 'fotos', 'reconhecidoEm', 'resolvidoEm', 'atualizadoEm'])
         )
 
         // (b) O autor edita descrição/severidade ou anexa as fotos do reporte,

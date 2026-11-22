@@ -1,5 +1,6 @@
 import { File } from "expo-file-system";
 import { ImageManipulator, ImageRef, SaveFormat } from "expo-image-manipulator";
+import { Platform } from "react-native";
 
 // Limite de tamanho de cada foto depois de comprimida: 1 MB.
 export const LIMITE_FOTO_BYTES = 1024 * 1024;
@@ -19,7 +20,12 @@ export type FotoComprimida = {
 };
 
 /** Descobre o tamanho (em bytes) de um arquivo local, direto do disco do celular. */
-function descobrirTamanhoEmBytes(uri: string): number {
+async function descobrirTamanhoEmBytes(uri: string): Promise<number> {
+  if (Platform.OS === "web") {
+    const resposta = await fetch(uri);
+    if (!resposta.ok) throw new Error("Não foi possível ler a foto.");
+    return (await resposta.blob()).size;
+  }
   return new File(uri).size;
 }
 
@@ -45,7 +51,7 @@ async function redimensionarFoto(uri: string, ladoMaximo: number): Promise<Image
 /** Salva a imagem como JPEG na qualidade indicada e mede o arquivo gerado. */
 async function salvarComoJpeg(imagem: ImageRef, qualidade: number): Promise<FotoComprimida> {
   const arquivo = await imagem.saveAsync({ compress: qualidade, format: SaveFormat.JPEG });
-  const tamanhoBytes = descobrirTamanhoEmBytes(arquivo.uri);
+  const tamanhoBytes = await descobrirTamanhoEmBytes(arquivo.uri);
 
   return {
     uri: arquivo.uri,
@@ -80,10 +86,5 @@ export async function comprimirFoto(uri: string): Promise<FotoComprimida> {
     }
   }
 
-  // Muito improvável (exigiria uma foto gigante mesmo em 800 px e qualidade 0.5):
-  // devolvemos a menor versão que foi possível gerar.
-  if (!ultimaTentativa) {
-    throw new Error("Não foi possível comprimir a foto.");
-  }
-  return ultimaTentativa;
+  throw new Error("Não foi possível reduzir a foto para até 1 MB.");
 }

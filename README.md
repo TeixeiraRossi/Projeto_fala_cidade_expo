@@ -54,7 +54,11 @@ Join our community of developers creating universal apps.
 
 Referência: [branch `09112026` do professor](https://github.com/marcelolinck/Projeto_falaa_cidade/tree/ccdf34dc5f8e4a2a3c48d8914f5f124072ddccb4).
 
-A tela **Novo reporte**, aberta pelo botão `+` do mapa, agora permite escolher o tipo de ocorrência, descrever o problema, tirar até 5 fotos do problema e 2 de referência, conferir o endereço e selecionar a severidade. Uma foto é obrigatória e o tipo **Outro** exige descrição. O envio continua **simulado**, como na aula: nenhum reporte ou foto é persistido em uma API.
+A tela **Novo reporte**, aberta pelo botão `+` do mapa, permite informar título, tipo, descrição, fotos, localização e severidade. Uma foto do problema é obrigatória e o tipo **Outro** exige descrição. O envio grava a ocorrência no Firestore e tenta enviar as fotos ao Firebase Storage. Se as fotos falharem depois da criação, o aplicativo informa o protocolo e permite tentar novamente enquanto a tela estiver aberta, sem criar outra ocorrência. Ao sair ou fechar o aplicativo, essa tentativa não é preservada.
+
+O mapa ainda usa ocorrências simuladas, portanto os novos reportes não aparecem nele automaticamente. Na web, selecione a foto no computador e informe cidade e UF; a localização do navegador continua necessária. O endereço obtido automaticamente está disponível no aplicativo móvel quando a geocodificação funciona.
+
+As regras de segurança locais ficam em `firebase/firestore.rules` e `firebase/storage.rules`. As regras publicadas são configuradas no console Firebase e devem ser conferidas separadamente. Para executar os testes locais do Firestore, use `npm run test:rules` (Java necessário; na primeira execução o emulador é baixado). Os testes usam um projeto fictício e não alteram o banco remoto. Para testar a retomada do envio de fotos com serviços simulados, execute `npm run test:reportes`.
 
 Depois de atualizar, execute `npm ci`. Como há um novo plugin de câmera e alteração no splash, gere e instale novamente o development build (`npx expo run:android` ou `npx expo run:ios`). Teste a câmera em um aparelho físico com as permissões de câmera e localização liberadas.
 

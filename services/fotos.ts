@@ -1,6 +1,7 @@
 import { File, UploadType } from "expo-file-system";
 import { User } from "firebase/auth";
 import { Timestamp } from "firebase/firestore";
+import { Platform } from "react-native";
 
 /*
  * Envio de fotos para o Firebase Storage.
@@ -56,32 +57,48 @@ export async function enviarFoto(
   uriDaFoto: string,
   caminhoNoArmazenamento: string
 ): Promise<FotoGravada> {
-  const arquivo = new File(uriDaFoto);
   const tokenDoUsuario = await usuarioLogado.getIdToken();
 
-  const resultado = await arquivo.upload(
-    montarEnderecoDoEnvio(nomeDoBucket, caminhoNoArmazenamento),
-    {
-      httpMethod: "POST",
-      uploadType: UploadType.BINARY_CONTENT, // o arquivo vai como está, sem formulário
-      mimeType: "image/jpeg",
-      headers: {
-        Authorization: `Firebase ${tokenDoUsuario}`,
-        "Content-Type": "image/jpeg",
-      },
-    }
-  );
+  const endereco = montarEnderecoDoEnvio(nomeDoBucket, caminhoNoArmazenamento);
+  const headers = {
+    Authorization: `Firebase ${tokenDoUsuario}`,
+    "Content-Type": "image/jpeg",
+  };
+  let status: number;
+  let corpo: string;
+  let tamanhoOriginal: number;
 
-  const envioFoiAceito = resultado.status >= 200 && resultado.status < 300;
-  if (!envioFoiAceito) {
-    throw new Error(`O Storage recusou a foto (código ${resultado.status}): ${resultado.body}`);
+  if (Platform.OS === "web") {
+    const leitura = await fetch(uriDaFoto);
+    if (!leitura.ok) throw new Error("Não foi possível ler a foto para envio.");
+    const foto = await leitura.blob();
+    tamanhoOriginal = foto.size;
+    const resposta = await fetch(endereco, { method: "POST", headers, body: foto });
+    status = resposta.status;
+    corpo = await resposta.text();
+  } else {
+    const arquivo = new File(uriDaFoto);
+    tamanhoOriginal = arquivo.size;
+    const resultado = await arquivo.upload(endereco, {
+      httpMethod: "POST",
+      uploadType: UploadType.BINARY_CONTENT,
+      mimeType: "image/jpeg",
+      headers,
+    });
+    status = resultado.status;
+    corpo = resultado.body;
   }
 
-  const resposta = JSON.parse(resultado.body) as RespostaDoStorage;
+  const envioFoiAceito = status >= 200 && status < 300;
+  if (!envioFoiAceito) {
+    throw new Error(`O Storage recusou a foto (código ${status}): ${corpo}`);
+  }
+
+  const resposta = JSON.parse(corpo) as RespostaDoStorage;
   const tamanhoGravado = Number(resposta.size);
-  if (tamanhoGravado !== arquivo.size) {
+  if (tamanhoGravado !== tamanhoOriginal) {
     throw new Error(
-      `A foto foi gravada com ${tamanhoGravado} bytes, mas o arquivo tinha ${arquivo.size}.`
+      `A foto foi gravada com ${tamanhoGravado} bytes, mas o arquivo tinha ${tamanhoOriginal}.`
     );
   }
 

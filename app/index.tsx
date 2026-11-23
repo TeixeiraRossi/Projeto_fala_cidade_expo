@@ -7,6 +7,7 @@ import { cores } from "@/styles";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useEffect, useState } from "react";
 import {
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -18,15 +19,32 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, router } from "expo-router";
 
 
-
-export default function HomeScreen() {
-  // `user` vem do Firebase (via AuthProvider) e só deixa de ser null depois
-  // que o login com Google terminar de verdade — não é mais um estado fake local.
-  const { user } = useAuth();
-  // `request` fica null até o client id carregar; `promptAsync` abre a tela/popup
-  // de login do Google; `error` guarda qualquer falha do processo.
+function LoginGoogleWeb() {
   const { request, promptAsync, error } = useGoogleAuth();
 
+  useEffect(() => {
+    if (error) console.error("Erro ao fazer login com Google:", error);
+  }, [error]);
+
+  return (
+    <>
+      <Text style={styles.ou}>ou</Text>
+
+      <TouchableOpacity
+        activeOpacity={0.8}
+        style={[styles.botao, styles.botaoGoogle]}
+        disabled={!request}
+        onPress={() => void promptAsync()}
+      >
+        <GoogleLogo size={20} />
+        <Text style={styles.textoBotaoGoogle}>Entrar com o Google</Text>
+      </TouchableOpacity>
+    </>
+  );
+}
+
+export default function HomeScreen() {
+  const { user } = useAuth();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erroLogin, setErroLogin] = useState<string | null>(null);
@@ -55,20 +73,6 @@ export default function HomeScreen() {
     } catch (e) {
       setErroLogin(traduzErroFirebase(e));
     }
-  }
-
-  useEffect(() => {
-    if (error) {
-      console.error("Erro ao fazer login com Google:", error);
-    }
-  }, [error]);
-
-  /**
-   * Abre o fluxo de login do Google. O resultado (sucesso/erro) é tratado
-   * dentro do hook useGoogleAuth — aqui só disparamos o processo.
-   */
-  function handleGoogleLogin() {
-    promptAsync();
   }
 
   return (
@@ -125,20 +129,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </Link>
 
-      <Text style={styles.ou}>ou</Text>
-
-      <TouchableOpacity
-        activeOpacity={0.8}
-        // Visual do botão oficial do Google: fundo branco, borda cinza, texto escuro.
-        style={[styles.botao, styles.botaoGoogle]}
-        // Sem `request` carregado ainda não tem como abrir o login (client id
-        // não pronto), então o botão fica desabilitado até esse momento.
-        disabled={!request}
-        onPress={() => handleGoogleLogin()}
-      >
-        <GoogleLogo size={20} />
-        <Text style={styles.textoBotaoGoogle}>Entrar com o Google</Text>
-      </TouchableOpacity>
+      {Platform.OS === "web" && <LoginGoogleWeb />}
       <Text style={styles.rodape}>
         Ao continuar, você concorda com os Termos e a Política de Privacidade
         (LGPD).

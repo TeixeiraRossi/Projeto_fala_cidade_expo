@@ -27,6 +27,6 @@
 - Se o aplicativo informar que o reporte foi criado, mas as fotos falharam, anote o protocolo e use **Tentar fotos novamente** na mesma tela. Não crie outro reporte.
 - Confira que a tentativa não cria outro documento e que as fotos aparecem no documento original depois de concluída.
 - A retomada depende da tela permanecer aberta; ao sair ou fechar o aplicativo, as fotos pendentes não podem ser retomadas pela interface atual.
-- O mapa usa dados simulados e não mostra automaticamente o reporte recém-criado. Isso pertence a uma etapa posterior.
+- Volte ao mapa no celular e confira o marcador. Em Perfil → Ver reportes, confira o título em Todos e em Meus reportes usando a conta que enviou a ocorrência.
 
 Registre qualquer mensagem de erro e, na web, o erro do console do navegador. Não inclua senhas ou tokens nos registros.

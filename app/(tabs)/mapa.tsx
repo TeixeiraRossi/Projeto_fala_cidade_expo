@@ -15,7 +15,7 @@ export default function Mapa() {
   const router = useRouter();
   const { user } = useAuth(); // usuário logado (Firebase)
   const { cidade, uf, coordenadas, situacao, atualizar } = useCidade();
-  const { ocorrencias } = useOcorrencias(coordenadas);
+  const { ocorrencias, erro, recarregar } = useOcorrencias();
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todos");
 
@@ -59,6 +59,11 @@ export default function Mapa() {
 
       <BuscaFiltros busca={busca} aoMudarBusca={setBusca} filtro={filtro} aoMudarFiltro={setFiltro} />
 
+      {erro && (
+        <Pressable onPress={recarregar} accessibilityRole="button">
+          <Text style={styles.avisoLink}>{erro} Tentar novamente</Text>
+        </Pressable>
+      )}
       <View style={styles.mapaBox}>
         {situacao === "carregando" ? (
           <ActivityIndicator size="large" color={cores.verde} />
@@ -67,7 +72,7 @@ export default function Mapa() {
           <MapaView
             key={coordenadas ? "com-gps" : "sem-gps"}
             coordenadas={coordenadas}
-            ocorrencias={visiveis}
+            ocorrencias={visiveis.filter((o) => Number.isFinite(o.latitude) && Number.isFinite(o.longitude))}
             style={styles.mapa}
           />
         )}

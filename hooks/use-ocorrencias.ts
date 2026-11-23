@@ -1,27 +1,29 @@
-import { Coordenadas } from "@/context/cidade-context";
 import { buscarOcorrencias } from "@/service/ocorrencias";
 import { Ocorrencia } from "@/types/ocorrencia";
-import { useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 
-/** Carrega as ocorrências perto das coordenadas dadas. */
-export function useOcorrencias(coordenadas: Coordenadas | null) {
+export function useOcorrencias() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
-  const [carregando, setCarregando] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [tentativa, setTentativa] = useState(0);
 
-  useEffect(() => {
-    if (!coordenadas) {
-      setOcorrencias([]);
-      return;
-    }
-    let ativo = true; // evita atualizar o estado depois que a tela mudou
+  useFocusEffect(useCallback(() => {
+    let ativo = true;
     setCarregando(true);
-    buscarOcorrencias(coordenadas)
-      .then((lista) => ativo && setOcorrencias(lista))
-      .finally(() => ativo && setCarregando(false));
-    return () => {
-      ativo = false;
-    };
-  }, [coordenadas]);
+    setErro("");
+    buscarOcorrencias()
+      .then((lista) => { if (ativo) setOcorrencias(lista); })
+      .catch((causa) => {
+        if (ativo) {
+          console.warn("Falha ao consultar ocorrências", causa);
+          setErro("Não foi possível carregar os reportes.");
+        }
+      })
+      .finally(() => { if (ativo) setCarregando(false); });
+    return () => { ativo = false; };
+  }, [tentativa]));
 
-  return { ocorrencias, carregando };
+  return { ocorrencias, carregando, erro, recarregar: () => setTentativa((valor) => valor + 1) };
 }

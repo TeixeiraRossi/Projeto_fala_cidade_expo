@@ -35,13 +35,6 @@ export default function Perfil() {
               transition={1000}
             />
 
-            <Text style={styles.titulo}>Aqui vai o mapa</Text>
-            <Link href="/perfil" asChild>
-              <Pressable>
-                <Text style={styles.link}>Perfil do usuário</Text>
-              </Pressable>
-            </Link>
-
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.botaoSair}
@@ -55,6 +48,9 @@ export default function Perfil() {
             Você não está logado
           </Text>
         )}
+        <Link href="/lista-de-reportes" asChild>
+          <Pressable><Text style={styles.link}>Ver reportes</Text></Pressable>
+        </Link>
       </View>
     </SafeAreaView>
   );

@@ -56,7 +56,7 @@ Referência: [branch `09112026` do professor](https://github.com/marcelolinck/Pr
 
 A tela **Novo reporte**, aberta pelo botão `+` do mapa, permite informar título, tipo, descrição, fotos, localização e severidade. Uma foto do problema é obrigatória e o tipo **Outro** exige descrição. O envio grava a ocorrência no Firestore e tenta enviar as fotos ao Firebase Storage. Se as fotos falharem depois da criação, o aplicativo informa o protocolo e permite tentar novamente enquanto a tela estiver aberta, sem criar outra ocorrência. Ao sair ou fechar o aplicativo, essa tentativa não é preservada.
 
-O mapa ainda usa ocorrências simuladas, portanto os novos reportes não aparecem nele automaticamente. Na web, selecione a foto no computador e informe cidade e UF; a localização do navegador continua necessária. O endereço obtido automaticamente está disponível no aplicativo móvel quando a geocodificação funciona.
+O mapa no celular e a lista em Perfil → Ver reportes consultam as 50 ocorrências mais recentes do Firestore ao abrir ou retornar à tela. Na web, selecione a foto no computador e informe cidade e UF; a localização do navegador continua necessária. O endereço obtido automaticamente está disponível no aplicativo móvel quando a geocodificação funciona.
 
 As regras de segurança locais ficam em `firebase/firestore.rules` e `firebase/storage.rules`. As regras publicadas são configuradas no console Firebase e devem ser conferidas separadamente. Para executar os testes locais do Firestore, use `npm run test:rules` (Java necessário; na primeira execução o emulador é baixado). Os testes usam um projeto fictício e não alteram o banco remoto. Para testar a retomada do envio de fotos com serviços simulados, execute `npm run test:reportes`.
 

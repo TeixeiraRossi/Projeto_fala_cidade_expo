@@ -21,6 +21,7 @@ export default function RootLayout() {
           <Stack>
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="lista-de-reportes" options={{ headerShown: false }} />
             <Stack.Screen name="cadastro" options={{ title: "Cadastro" }} />
             <Stack.Screen
               name="esqueci-senha"

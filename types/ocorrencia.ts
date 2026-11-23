@@ -8,7 +8,10 @@ export type Ocorrencia = {
   id: string;
   titulo: string;
   tipo?: TipoOcorrencia;
-  descricao?: string;
+  descricao?: string | null;
+  endereco?: string | null;
+  idNotificante?: string;
+  criadoEm?: Date;
   status: StatusOcorrencia;
   latitude: number;
   longitude: number;

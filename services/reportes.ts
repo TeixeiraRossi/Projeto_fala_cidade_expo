@@ -52,7 +52,10 @@ export type EnvioDeFotosPendente = {
 };
 
 /** Passo 1: cria o documento da ocorrência, com as listas de fotos ainda vazias. */
-async function criarOcorrencia(dados: DadosDoReporte): Promise<DocumentReference> {
+export async function registrarOcorrencia(
+  dados: Omit<DadosDoReporte, "fotosDoProblema" | "fotosDeReferencia">
+): Promise<DocumentReference> {
+  await garantirCadastroDoNotificante(dados.usuarioLogado);
   const { latitude, longitude } = dados.coordenadas;
 
   return addDoc(collection(bancoDeDados, "ocorrencias"), {
@@ -135,9 +138,7 @@ async function anexarFotosNaOcorrencia(
  *   3. anexa as URLs das fotos na ocorrência.
  */
 export async function enviarReporte(dados: DadosDoReporte): Promise<ResultadoDoReporte> {
-  await garantirCadastroDoNotificante(dados.usuarioLogado);
-
-  const ocorrencia = await criarOcorrencia(dados);
+  const ocorrencia = await registrarOcorrencia(dados);
   return reenviarFotos({
     idOcorrencia: ocorrencia.id,
     usuarioLogado: dados.usuarioLogado,

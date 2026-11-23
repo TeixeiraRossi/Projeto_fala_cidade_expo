@@ -54,13 +54,13 @@ Join our community of developers creating universal apps.
 
 Referência: [branch `09112026` do professor](https://github.com/marcelolinck/Projeto_falaa_cidade/tree/ccdf34dc5f8e4a2a3c48d8914f5f124072ddccb4).
 
-A tela **Novo reporte**, aberta pelo botão `+` do mapa, permite informar título, tipo, descrição, fotos, localização e severidade. Uma foto do problema é obrigatória e o tipo **Outro** exige descrição. O envio grava a ocorrência no Firestore e tenta enviar as fotos ao Firebase Storage. Se as fotos falharem depois da criação, o aplicativo informa o protocolo e permite tentar novamente enquanto a tela estiver aberta, sem criar outra ocorrência. Ao sair ou fechar o aplicativo, essa tentativa não é preservada.
+No mapa, toque em **+** para registrar uma ocorrência no Firestore com título, tipo, descrição opcional, localização e severidade. Ao concluir a gravação, o aplicativo mostra o protocolo.
 
-O mapa no celular e a lista em Perfil → Ver reportes consultam as 50 ocorrências mais recentes do Firestore ao abrir ou retornar à tela. Na web, selecione a foto no computador e informe cidade e UF; a localização do navegador continua necessária. O endereço obtido automaticamente está disponível no aplicativo móvel quando a geocodificação funciona.
+O mapa no celular e a lista em Perfil → Ver reportes consultam as 50 ocorrências mais recentes do Firestore ao abrir ou retornar à tela. Na web, informe cidade e UF; a localização do navegador continua necessária. O endereço obtido automaticamente está disponível no aplicativo móvel quando a geocodificação funciona.
 
 As regras de segurança locais ficam em `firebase/firestore.rules` e `firebase/storage.rules`. As regras publicadas são configuradas no console Firebase e devem ser conferidas separadamente. Para executar os testes locais do Firestore, use `npm run test:rules` (Java necessário; na primeira execução o emulador é baixado). Os testes usam um projeto fictício e não alteram o banco remoto. Para testar a retomada do envio de fotos com serviços simulados, execute `npm run test:reportes`.
 
-Depois de atualizar, execute `npm ci`. Como há um novo plugin de câmera e alteração no splash, gere e instale novamente o development build (`npx expo run:android` ou `npx expo run:ios`). Teste a câmera em um aparelho físico com as permissões de câmera e localização liberadas.
+Para testar o formulário no Expo Go, execute `npx expo start --go` e permita o acesso à localização.
 
 Materiais da aula:
 

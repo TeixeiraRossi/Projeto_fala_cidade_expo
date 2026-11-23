@@ -2,20 +2,17 @@ import { MapaView } from "@/components/mapa-view";
 import { TIPOS } from "@/constants/tipos";
 import { useAuth } from "@/hooks/use-auth";
 import { useCidade } from "@/hooks/use-cidade";
-import { enviarReporte, reenviarFotos, ResultadoDoReporte } from "@/services/reportes";
+import { registrarOcorrencia } from "@/services/reportes";
 import { cores } from "@/styles";
 import { Severidade, TipoOcorrencia } from "@/types/ocorrencia";
-import { comprimirFoto } from "@/utils/imagem";
 import { buscarCodigoIbge } from "@/utils/municipios";
 import { Feather } from "@react-native-vector-icons/feather";
-import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   AlertButton,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -79,8 +76,6 @@ function Etapas() {
 const ENDERECO_BUSCANDO = "Buscando endereço...";
 const ENDERECO_NAO_ENCONTRADO = "Endereço não encontrado";
 
-const MAX_FOTOS = 5;
-const MAX_FOTOS_REFERENCIA = 2;
 
 function avisar(titulo: string, mensagem: string, botoes?: AlertButton[]) {
   if (Platform.OS !== "web") {
@@ -99,105 +94,6 @@ function avisar(titulo: string, mensagem: string, botoes?: AlertButton[]) {
   }
 }
 
-/**
- * Lista de fotos: miniaturas (com botão de remover) e, enquanto não chegou
- * no limite, um quadro para tirar mais uma foto.
- */
-function ListaFotos({
-  uris,
-  max,
-  textoVazio,
-  tracejado,
-  onAdicionar,
-  onRemover,
-}: {
-  uris: string[];
-  max: number;
-  textoVazio: string;
-  tracejado?: boolean;
-  onAdicionar: () => void;
-  onRemover: (indice: number) => void;
-}) {
-  const altura = tracejado ? 70 : 100;
-  const cheio = uris.length >= max;
-
-  function confirmarRemocao(indice: number) {
-    avisar("Excluir foto", "Deseja excluir esta foto?", [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Excluir", style: "destructive", onPress: () => onRemover(indice) },
-    ]);
-  }
-
-  return (
-    <View>
-      {/* Quadro para tirar foto: some só quando chega no limite. */}
-      {!cheio && (
-        <Pressable
-          onPress={onAdicionar}
-          style={[
-            estilos.foto,
-            tracejado ? estilos.fotoTracejada : estilos.fotoPreenchida,
-            { height: uris.length > 0 ? 56 : altura },
-          ]}
-        >
-          <View style={estilos.fotoConteudo}>
-            <Feather name="camera" size={22} color={cores.cinzaEscuro} />
-            <Text style={estilos.fotoTexto}>
-              {uris.length > 0 ? "Toque para adicionar outra foto" : textoVazio}
-            </Text>
-          </View>
-        </Pressable>
-      )}
-
-      {/* Fotos já tiradas, logo abaixo, com a opção de excluir. */}
-      {uris.length > 0 && (
-        <View style={estilos.adicionadas}>
-          <View style={estilos.adicionadasTitulo}>
-            <Feather name="check-circle" size={14} color={cores.verde} />
-            <Text style={estilos.adicionadasTexto}>
-              {uris.length === 1
-                ? "1 foto adicionada"
-                : `${uris.length} fotos adicionadas`}
-              {cheio ? " (limite atingido)" : ""}
-            </Text>
-          </View>
-          <View style={estilos.miniaturas}>
-            {uris.map((uri, i) => (
-              <View key={uri} style={estilos.miniatura}>
-                <Image source={{ uri }} style={StyleSheet.absoluteFill} />
-                <Pressable
-                  onPress={() => confirmarRemocao(i)}
-                  hitSlop={8}
-                  style={estilos.remover}
-                  accessibilityLabel="Excluir foto"
-                >
-                  <Feather name="trash-2" size={14} color={cores.branco} />
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-    </View>
-  );
-}
-
-/** Texto do aviso exibido depois que o reporte foi gravado. */
-function montarMensagemDeSucesso(resultado: ResultadoDoReporte): string {
-  const agradecimento = `Reporte registrado. Protocolo: ${resultado.idOcorrencia}.`;
-
-  if (!resultado.armazenamentoAtivo) {
-    return `${agradecimento}\n\nAs fotos não foram enviadas porque o armazenamento não está configurado. Não envie o reporte novamente.`;
-  }
-  if (resultado.falhaAoAnexarFotos) {
-    return `${agradecimento}\n\nNão foi possível vincular as fotos ao reporte. Guarde o protocolo e não envie o reporte novamente.`;
-  }
-  if (resultado.quantidadeDeFotosComFalha > 0) {
-    return `${agradecimento}\n\n${resultado.quantidadeDeFotosComFalha} foto(s) não puderam ser enviadas. Não envie o reporte novamente.`;
-  }
-  return agradecimento;
-}
-
 /** Texto do aviso exibido quando a gravação falhou. */
 function montarMensagemDeErro(erro: unknown): string {
   const codigoDoErro = (erro as { code?: string }).code;
@@ -214,8 +110,6 @@ export default function NovoReporte() {
   const { coordenadas, codigoIbge, atualizar } = useCidade();
 
   const [tipo, setTipo] = useState<TipoOcorrencia>("buraco");
-  const [fotosDoProblema, setFotosDoProblema] = useState<string[]>([]);
-  const [fotosDeReferencia, setFotosDeReferencia] = useState<string[]>([]);
   const [endereco, setEndereco] = useState(
     Platform.OS === "web" ? ENDERECO_NAO_ENCONTRADO : ENDERECO_BUSCANDO
   );
@@ -225,8 +119,6 @@ export default function NovoReporte() {
   const [ufManual, setUfManual] = useState("");
   const [descricao, setDescricao] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const [processandoFoto, setProcessandoFoto] = useState(false);
-  const [resultadoPendente, setResultadoPendente] = useState<ResultadoDoReporte | null>(null);
   const envioEmAndamento = useRef(false);
 
   // Converte as coordenadas do usuário em "Rua, número — Bairro".
@@ -247,48 +139,11 @@ export default function NovoReporte() {
     };
   }, [coordenadas]);
 
-  async function tirarFoto(definir: Dispatch<SetStateAction<string[]>>) {
-    if (processandoFoto) return;
-    let resultado: ImagePicker.ImagePickerResult;
-    if (Platform.OS === "web") {
-      resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
-    } else {
-      const { granted } = await ImagePicker.requestCameraPermissionsAsync();
-      if (!granted) {
-        avisar("Permissão negada", "Libere o acesso à câmera nas configurações.");
-        return;
-      }
-      resultado = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    }
-    if (resultado.canceled) return;
-
-    // Cada câmera gera uma foto de tamanho diferente. Aqui ela é reduzida para
-    // no máximo 1 MB antes de aparecer na tela e de ser enviada.
-    setProcessandoFoto(true);
-    try {
-      const foto = await comprimirFoto(resultado.assets[0].uri);
-      definir((atuais) => [...atuais, foto.uri]);
-    } catch (erro) {
-      console.warn("Falha ao comprimir a foto", erro);
-      avisar("Não foi possível usar a foto", "Tente tirar a foto novamente.");
-    } finally {
-      setProcessandoFoto(false);
-    }
-  }
-
   async function enviar() {
     if (envioEmAndamento.current) return;
     // 1. Confere se o formulário e o usuário estão prontos para o envio.
     if (!titulo.trim()) {
       avisar("Título obrigatório", "Informe um título para o problema.");
-      return;
-    }
-    if (fotosDoProblema.length === 0) {
-      avisar("Foto obrigatória", "Adicione a foto do problema para continuar.");
-      return;
-    }
-    if (tipo === "outro" && !descricao.trim()) {
-      avisar("Descrição obrigatória", "Descreva o problema que você encontrou.");
       return;
     }
     if (!usuarioLogado) {
@@ -329,7 +184,7 @@ export default function NovoReporte() {
       const enderecoFoiEncontrado =
         endereco !== ENDERECO_BUSCANDO && endereco !== ENDERECO_NAO_ENCONTRADO;
 
-      const resultado = await enviarReporte({
+      const resultado = await registrarOcorrencia({
         usuarioLogado,
         tipo,
         titulo,
@@ -338,17 +193,11 @@ export default function NovoReporte() {
         coordenadas,
         endereco: enderecoFoiEncontrado ? endereco : null,
         codigoIbge: codigoDaCidade,
-        fotosDoProblema,
-        fotosDeReferencia,
       });
 
-      if (resultado.pendencia) {
-        setResultadoPendente(resultado);
-      } else {
-        avisar("Reporte enviado", montarMensagemDeSucesso(resultado), [
-          { text: "OK", onPress: () => router.back() },
-        ]);
-      }
+      avisar("Reporte enviado", `Protocolo: ${resultado.id}`, [
+        { text: "OK", onPress: () => router.back() },
+      ]);
     } catch (erro) {
       console.error("Falha ao gravar o reporte", erro);
       avisar("Não foi possível enviar", montarMensagemDeErro(erro));
@@ -356,64 +205,6 @@ export default function NovoReporte() {
       envioEmAndamento.current = false;
       setEnviando(false);
     }
-  }
-
-  async function tentarFotosNovamente() {
-    if (!resultadoPendente?.pendencia || envioEmAndamento.current) return;
-    if (!usuarioLogado || usuarioLogado.uid !== resultadoPendente.pendencia.usuarioLogado.uid) {
-      avisar("Login necessário", "Entre novamente com a mesma conta para enviar as fotos.");
-      return;
-    }
-    envioEmAndamento.current = true;
-    setEnviando(true);
-    try {
-      const resultado = await reenviarFotos({ ...resultadoPendente.pendencia, usuarioLogado });
-      if (resultado.pendencia) {
-        setResultadoPendente(resultado);
-      } else {
-        setResultadoPendente(null);
-        avisar("Reporte enviado", montarMensagemDeSucesso(resultado), [
-          { text: "OK", onPress: () => router.back() },
-        ]);
-      }
-    } catch (erro) {
-      console.error("Falha ao retomar envio de fotos", erro);
-      avisar("Não foi possível enviar as fotos", "Confira a conexão e tente novamente nesta tela.");
-    } finally {
-      envioEmAndamento.current = false;
-      setEnviando(false);
-    }
-  }
-
-  if (resultadoPendente) {
-    return (
-      <SafeAreaView style={estilos.container} edges={["top", "bottom"]}>
-        <ScrollView contentContainerStyle={estilos.conteudo}>
-          <Text style={estilos.titulo}>Reporte registrado</Text>
-          <Text>Protocolo: {resultadoPendente.idOcorrencia}</Text>
-          <Text>
-            {resultadoPendente.armazenamentoAtivo
-              ? "As fotos ainda não foram vinculadas ao reporte. Você pode tentar novamente nesta tela."
-              : "O armazenamento de fotos não está configurado. As fotos não foram enviadas."}
-          </Text>
-          <Text>Guarde o protocolo. Ao sair desta tela, não será possível retomar este envio.</Text>
-          {resultadoPendente.armazenamentoAtivo && (
-            <Pressable style={estilos.botao} onPress={tentarFotosNovamente} disabled={enviando}>
-              <Text style={estilos.botaoTexto}>{enviando ? "Enviando fotos..." : "Tentar fotos novamente"}</Text>
-            </Pressable>
-          )}
-          <Pressable
-            disabled={enviando}
-            onPress={() => avisar("Sair sem as fotos?", "O reporte já foi registrado. As fotos pendentes não poderão ser retomadas depois de sair.", [
-              { text: "Continuar aqui", style: "cancel" },
-              { text: "Sair", onPress: () => router.back() },
-            ])}
-          >
-            <Text style={estilos.rotulo}>Sair</Text>
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    );
   }
 
   return (
@@ -469,9 +260,7 @@ export default function NovoReporte() {
             accessibilityLabel="Título do reporte, obrigatório"
           />
 
-          <Text style={estilos.rotulo}>
-            {tipo === "outro" ? "3. Descrição *" : "3. Descrição (opcional)"}
-          </Text>
+          <Text style={estilos.rotulo}>3. Descrição (opcional)</Text>
           <TextInput
             style={estilos.descricao}
             value={descricao}
@@ -487,33 +276,7 @@ export default function NovoReporte() {
             textAlignVertical="top"
           />
 
-          <Text style={estilos.rotulo}>
-            4. Fotos do problema * ({fotosDoProblema.length}/{MAX_FOTOS})
-          </Text>
-          <ListaFotos
-            uris={fotosDoProblema}
-            max={MAX_FOTOS}
-            textoVazio="Toque para tirar a foto"
-            onAdicionar={() => tirarFoto(setFotosDoProblema)}
-            onRemover={(i) => setFotosDoProblema((f) => f.filter((_, j) => j !== i))}
-          />
-
-          <Text style={estilos.rotulo}>
-            5. Fotos de referência (opcional) ({fotosDeReferencia.length}/
-            {MAX_FOTOS_REFERENCIA})
-          </Text>
-          <ListaFotos
-            uris={fotosDeReferencia}
-            max={MAX_FOTOS_REFERENCIA}
-            tracejado
-            textoVazio="Ponto próximo para localizar o problema"
-            onAdicionar={() => tirarFoto(setFotosDeReferencia)}
-            onRemover={(i) =>
-              setFotosDeReferencia((f) => f.filter((_, j) => j !== i))
-            }
-          />
-
-          <Text style={estilos.rotulo}>6. Localização</Text>
+          <Text style={estilos.rotulo}>4. Localização</Text>
           <View style={estilos.mapa}>
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
               <MapaView coordenadas={coordenadas} style={StyleSheet.absoluteFill} />
@@ -573,14 +336,14 @@ export default function NovoReporte() {
 
           <Pressable
             onPress={enviar}
-            disabled={enviando || processandoFoto}
+            disabled={enviando}
             style={({ pressed }) => [
               estilos.botao,
               (pressed || enviando) && { backgroundColor: cores.verdeEscuro },
             ]}
           >
             <Text style={estilos.botaoTexto}>
-              {enviando ? "Enviando..." : processandoFoto ? "Processando foto..." : "Enviar reporte"}
+              {enviando ? "Enviando..." : "Enviar reporte"}
             </Text>
           </Pressable>
         </ScrollView>
@@ -632,39 +395,6 @@ const estilos = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
-
-  foto: { borderRadius: 18, overflow: "hidden" },
-  fotoPreenchida: { height: 100, backgroundColor: "#b6c1d1" },
-  fotoTracejada: {
-    backgroundColor: "#e8ecf3",
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "#c3cbd8",
-  },
-  adicionadas: { marginTop: 10 },
-  adicionadasTitulo: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
-  adicionadasTexto: { fontSize: 12, fontWeight: "700", color: cores.verde },
-  miniaturas: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  miniatura: {
-    width: 84,
-    height: 84,
-    borderRadius: 14,
-    overflow: "hidden",
-    backgroundColor: "#b6c1d1",
-  },
-  remover: {
-    position: "absolute",
-    top: 4,
-    right: 4,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(220,38,38,0.9)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fotoConteudo: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
-  fotoTexto: { fontSize: 11, color: cores.cinzaEscuro },
 
   mapa: {
     height: 72,

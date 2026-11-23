@@ -6,13 +6,13 @@ import { useCallback, useState } from "react";
 export function useOcorrencias() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
 
   useFocusEffect(useCallback(() => {
     let ativo = true;
     setCarregando(true);
-    setErro("");
+    setErro(null);
     buscarOcorrencias()
       .then((lista) => { if (ativo) setOcorrencias(lista); })
       .catch((causa) => {

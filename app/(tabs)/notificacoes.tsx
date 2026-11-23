@@ -66,7 +66,7 @@ function CaixaDeEntrada({ uid }: { uid: string }) {
       {falhaGravacao && <Text style={estilos.secundario}>Falha ao marcar como lida. Tente novamente.</Text>}
       <FlatList data={lista} keyExtractor={item => item.id} contentContainerStyle={estilos.lista}
         ListEmptyComponent={carregando ? <ActivityIndicator color={cores.verde} /> :
-          falhaLeitura ? null : <Text style={estilos.secundario}>Você ainda não recebeu notificações.</Text>}
+          falhaLeitura ? undefined : <Text style={estilos.secundario}>Você ainda não recebeu notificações.</Text>}
         renderItem={({ item }) => (
           <View style={estilos.cartao}>
             <Text style={estilos.destaque}>{item.lida ? "Lida" : "Não lida"}</Text>

@@ -45,7 +45,7 @@ function Classificacao({ uid }: { uid: string }) {
       <FlatList data={lista} keyExtractor={item => item.uid} contentContainerStyle={estilos.lista}
         refreshing={carregando} onRefresh={() => setTentativa(n => n + 1)}
         ListEmptyComponent={carregando ? <ActivityIndicator color={cores.verde} /> :
-          erro ? null : <Text style={estilos.secundario}>Ainda não há reportes registrados.</Text>}
+          erro ? undefined : <Text style={estilos.secundario}>Ainda não há reportes registrados.</Text>}
         renderItem={({ item }) => (
           <View style={[estilos.cartao, estilos.linha]}>
             <Text style={estilos.destaque}>{item.posicao}º</Text>

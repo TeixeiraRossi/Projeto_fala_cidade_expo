@@ -20,16 +20,9 @@ export default function ListaDeReportes() {
   const roteador = useRouter();
   const { user: usuario } = useAuth();
 
-  // Busca as ocorrências reais do Firestore e recebe a função de recarregar
-  const { ocorrencias, carregando, erro, recarregar } = useOcorrencias();
-
-  // Melhoria extra: estado para alternar entre "Todos os reportes" e "Meus reportes"
-  const [apenasMeus, setApenasMeus] = useState(false);
-
-  // Filtra no próprio aplicativo para evitar erro de índice composto no Firestore
-  const listaExibida = apenasMeus && usuario
-    ? ocorrencias.filter((item) => item.idNotificante === usuario.uid)
-    : ocorrencias;
+  const [filtroPessoal, setFiltroPessoal] = useState(false);
+  const apenasMeus = filtroPessoal && !!usuario;
+  const { ocorrencias, carregando, erro, recarregar } = useOcorrencias(apenasMeus ? usuario?.uid : undefined);
 
   // Formata a data vinda do Firestore (.toDate()) para o padrão brasileiro
   function formatarData(data?: Date) {
@@ -60,17 +53,17 @@ export default function ListaDeReportes() {
       <View style={estilos.filtros}>
         <TouchableOpacity
           style={[estilos.botaoFiltro, !apenasMeus && estilos.filtroAtivo]}
-          onPress={() => setApenasMeus(false)}
+          onPress={() => setFiltroPessoal(false)}
         >
           <Text style={[estilos.textoFiltro, !apenasMeus && estilos.textoFiltroAtivo]}>
-            Todos ({ocorrencias.length})
+            Todos
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[estilos.botaoFiltro, apenasMeus && estilos.filtroAtivo]}
           disabled={!usuario}
-          onPress={() => setApenasMeus(true)}
+          onPress={() => setFiltroPessoal(true)}
         >
           <Text style={[estilos.textoFiltro, apenasMeus && estilos.textoFiltroAtivo]}>
             Meus reportes
@@ -78,19 +71,19 @@ export default function ListaDeReportes() {
         </TouchableOpacity>
       </View>
 
-      {carregando && listaExibida.length === 0 && (
+      {carregando && ocorrencias.length === 0 && (
         <ActivityIndicator color={cores.verde} style={{ marginTop: 20 }} />
       )}
 
       {erro && <Text style={estilos.vazio}>{erro}</Text>}
 
-      {!erro && !carregando && listaExibida.length === 0 && (
-        <Text style={estilos.vazio}>Nenhum reporte encontrado.</Text>
+      {!erro && !carregando && ocorrencias.length === 0 && (
+        <Text style={estilos.vazio}>{apenasMeus ? "Você ainda não enviou reportes." : "Nenhum reporte ainda."}</Text>
       )}
 
       {/* Lista com RefreshControl (puxar-para-atualizar) */}
       <FlatList
-        data={listaExibida}
+        data={ocorrencias}
         keyExtractor={(ocorrencia) => ocorrencia.id}
         refreshControl={
           <RefreshControl

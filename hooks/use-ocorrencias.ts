@@ -3,8 +3,8 @@ import { Ocorrencia } from "@/types/ocorrencia";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 
-export function useOcorrencias() {
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+export function useOcorrencias(uid?: string) {
+  const [resultado, setResultado] = useState<{ uid?: string; lista: Ocorrencia[] }>();
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
@@ -13,8 +13,8 @@ export function useOcorrencias() {
     let ativo = true;
     setCarregando(true);
     setErro(null);
-    buscarOcorrencias()
-      .then((lista) => { if (ativo) setOcorrencias(lista); })
+    buscarOcorrencias(uid)
+      .then((lista) => { if (ativo) setResultado({ uid, lista }); })
       .catch((causa) => {
         if (ativo) {
           console.warn("Falha ao consultar ocorrências", causa);
@@ -23,7 +23,8 @@ export function useOcorrencias() {
       })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
-  }, [tentativa]));
+  }, [tentativa, uid]));
 
+  const ocorrencias = resultado && resultado.uid === uid ? resultado.lista : [];
   return { ocorrencias, carregando, erro, recarregar: () => setTentativa((valor) => valor + 1) };
 }

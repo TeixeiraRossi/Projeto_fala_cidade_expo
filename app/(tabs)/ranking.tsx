@@ -1,91 +1,59 @@
 import { useAuth } from "@/hooks/use-auth";
+import { buscarRanking, type Participante } from "@/services/ranking";
 import { cores } from "@/styles";
-import { Image } from 'expo-image';
-import { Link } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { estilosAbas as estilos } from "@/styles/abas";
+import { Link, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-
-// Por enquanto esta tela é uma cópia da tela Mapa (veja os comentários em mapa.tsx).
-// Na próxima etapa ela vai mostrar o ranking de quem mais reporta problemas.
 export default function Ranking() {
-
-  const { user, isLogin: estaLogado } = useAuth();
-
-  const perfil = user;
-
+  const { user, isReady } = useAuth();
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.status}>
-        {estaLogado ? (
-          <>
-            <Text style={[styles.statusTexto, { color: cores.verde }]}>
-              Você está logado
-            </Text>
-            <Text style={styles.titulo}>User: {perfil?.displayName}</Text>
-            <Text style={styles.titulo}>Email: {perfil?.email}</Text>
-            
-            <Image
-              style={styles.image}
-              source={{ uri: perfil?.photoURL ?? undefined }}
-             // placeholder={{ blurhash }}
-              contentFit="cover"
-              transition={1000}
-            />
-
-            <Text style={styles.titulo}>Aqui vai o mapa</Text>
-            <Link href="/perfil" asChild>
-              <Pressable>
-                <Text style={styles.link}>Perfil do usuário</Text>
-              </Pressable>
-            </Link>
-          </>
-        ) : (
-          <Text style={[styles.statusTexto, { color: cores.alerta }]}>
-            Você não está logado
-          </Text>
-        )}
-      </View>
+    <SafeAreaView style={estilos.tela} edges={["top"]}>
+      <Text style={estilos.titulo}>Ranking</Text>
+      {!isReady ? <ActivityIndicator color={cores.verde} /> : user ? (
+        <Classificacao key={user.uid} uid={user.uid} />
+      ) : <Link href="/" style={estilos.acao}>Entre para ver o ranking</Link>}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: cores.bgBrancoGelo,
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 20,
-  },
-  status: {
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  statusTexto: {
-    fontSize: 20,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  link: {
-    color: cores.verde,
-    fontSize: 16,
-    fontWeight: "700",
-    textAlign: "center",
-    marginTop: 12,
-  },
-  titulo: {
-    color: cores.preto,
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  image: {
-   // flex: 1,
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginTop: 20,
-    marginBottom: 20,
-    backgroundColor: '#0553',
-  },
-});
+function Classificacao({ uid }: { uid: string }) {
+  const [lista, setLista] = useState<Participante[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
+
+  useFocusEffect(useCallback(() => {
+    let ativo = true;
+    setCarregando(true);
+    setErro(false);
+    buscarRanking()
+      .then((dados) => { if (ativo) setLista(dados); })
+      .catch(() => { if (ativo) setErro(true); })
+      .finally(() => { if (ativo) setCarregando(false); });
+    return () => { ativo = false; };
+  }, [tentativa]));
+
+  return (
+    <>
+      <Text style={estilos.secundario}>Os 10 participantes com mais reportes registrados.</Text>
+      {erro && <Pressable onPress={() => setTentativa(n => n + 1)}>
+        <Text style={estilos.acao}>Falha ao carregar. Tentar novamente</Text>
+      </Pressable>}
+      <FlatList data={lista} keyExtractor={item => item.uid} contentContainerStyle={estilos.lista}
+        refreshing={carregando} onRefresh={() => setTentativa(n => n + 1)}
+        ListEmptyComponent={carregando ? <ActivityIndicator color={cores.verde} /> :
+          erro ? null : <Text style={estilos.secundario}>Ainda não há reportes registrados.</Text>}
+        renderItem={({ item }) => (
+          <View style={[estilos.cartao, estilos.linha]}>
+            <Text style={estilos.destaque}>{item.posicao}º</Text>
+            <Text style={estilos.nome}>{item.nome}{item.uid === uid ? " (você)" : ""}</Text>
+            <Text style={estilos.secundario}>{item.total} {item.total === 1 ? "reporte" : "reportes"}</Text>
+          </View>
+        )}
+      />
+    </>
+  );
+}
